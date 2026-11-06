@@ -1,0 +1,45 @@
+name: Build SAUCE VST3
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows:
+    name: Build SAUCE for Windows
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Configure project
+        shell: pwsh
+        run: |
+          if (Test-Path build) { Remove-Item build -Recurse -Force }
+          cmake -S . -B build -A x64 -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build VST3
+        run: cmake --build build --config Release --target SAUCE_VST3 --parallel 2
+
+      - name: Find and package VST3
+        shell: pwsh
+        run: |
+          $vst = Get-ChildItem -Path build -Recurse -Directory -Filter "SAUCE.vst3" | Select-Object -First 1
+          if (-not $vst) { throw "ERROR: SAUCE.vst3 was not generated." }
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          Copy-Item -Path $vst.FullName -Destination "dist/SAUCE.vst3" -Recurse
+          Compress-Archive -Path "dist/SAUCE.vst3" -DestinationPath "SAUCE-VST3-Windows.zip" -Force
+
+      - name: Upload VST3 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SAUCE-VST3-Windows
+          path: SAUCE-VST3-Windows.zip
+          if-no-files-found: error
+          retention-days: 14
